@@ -15,6 +15,7 @@ import (
 	cniskel "github.com/containernetworking/cni/pkg/skel"
 	cnitypes "github.com/containernetworking/cni/pkg/types"
 	cni020 "github.com/containernetworking/cni/pkg/types/020"
+	cni030 "github.com/containernetworking/cni/pkg/types/current"
 	"github.com/containernetworking/plugins/pkg/ns"
 
 	"github.com/openshift/origin/pkg/network/node/cniserver"
@@ -92,12 +93,24 @@ func TestOpenshiftSdnCNIPlugin(t *testing.T) {
 
 	expectedIP, expectedNet, _ := net.ParseCIDR("10.0.0.2/24")
 	expectedResult = &cni020.Result{
+		CNIVersion: "0.2.0",
 		IP4: &cni020.IPConfig{
 			IP: net.IPNet{
 				IP:   expectedIP,
 				Mask: expectedNet.Mask,
 			},
 		},
+	}
+
+	expected031Result, err := cni030.NewResultFromResult(expectedResult)
+	if err != nil {
+		t.Fatalf("error converting expected result to 0.3.1: %v", err)
+	}
+
+	tmp, err := cni030.NewResultFromResult(expectedResult)
+	expected030Result, err := tmp.GetAsVersion("0.3.0")
+	if err != nil {
+		t.Fatalf("error converting expected result to 0.3.0: %v", err)
 	}
 
 	type testcase struct {
@@ -122,6 +135,34 @@ func TestOpenshiftSdnCNIPlugin(t *testing.T) {
 				StdinData:   []byte("{\"cniVersion\": \"0.1.0\",\"name\": \"openshift-sdn\",\"type\": \"openshift-sdn\"}"),
 			},
 			result: expectedResult,
+		},
+		// ADD request using cniVersion 0.3.0
+		{
+			name:    "ADD-0.3.0",
+			reqType: cniserver.CNI_ADD,
+			skelArgs: &cniskel.CmdArgs{
+				ContainerID: "adsfadsfasfdasdfasf",
+				Netns:       "/path/to/something",
+				IfName:      "eth0",
+				Args:        "K8S_POD_NAMESPACE=awesome-namespace;K8S_POD_NAME=awesome-name",
+				Path:        "/some/path",
+				StdinData:   []byte("{\"cniVersion\": \"0.3.0\",\"name\": \"openshift-sdn\",\"type\": \"openshift-sdn\"}"),
+			},
+			result: expected030Result,
+		},
+		// ADD request using cniVersion 0.3.1
+		{
+			name:    "ADD-0.3.1",
+			reqType: cniserver.CNI_ADD,
+			skelArgs: &cniskel.CmdArgs{
+				ContainerID: "adsfadsfasfdasdfasf",
+				Netns:       "/path/to/something",
+				IfName:      "eth0",
+				Args:        "K8S_POD_NAMESPACE=awesome-namespace;K8S_POD_NAME=awesome-name",
+				Path:        "/some/path",
+				StdinData:   []byte("{\"cniVersion\": \"0.3.1\",\"name\": \"openshift-sdn\",\"type\": \"openshift-sdn\"}"),
+			},
+			result: expected031Result,
 		},
 		// Normal DEL request
 		{
