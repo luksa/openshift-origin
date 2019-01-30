@@ -89,7 +89,19 @@ func (p *cniPlugin) doCNI(url string, req *cniserver.CNIRequest) ([]byte, error)
 		return nil, fmt.Errorf("CNI request failed with status %v: '%s'", resp.StatusCode, string(body))
 	}
 
+	logDebug(fmt.Sprintf("received response: %v", string(body)))
+
 	return body, nil
+}
+
+func logDebug(msg string) {
+	f, err := os.OpenFile("/tmp/openshift-sdn.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err == nil {
+		defer f.Close()
+		f.WriteString("openshift-sdn: ")
+		f.WriteString(msg)
+		f.WriteString("\n")
+	}
 }
 
 // Send the ADD command environment and config to the CNI server, returning
@@ -259,6 +271,12 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 	if err != nil {
 		return err
 	}
+
+	data, err := json.MarshalIndent(result, "", "    ")
+	if err == nil {
+		logDebug("output: " + string(data))
+	}
+
 	return result.Print()
 }
 
