@@ -121,13 +121,63 @@ func (p *cniPlugin) doCNIServerAdd(req *cniserver.CNIRequest, hostVeth string) (
 	}
 
 	// We'll create the 0.3.0 (current) version of the Result, because it will allow us to
-	// convert it to any lower version
-	result, err = current.NewResultFromResult(result)
+	// properly convert it to any lower version
+	result, err = convertTo030(result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert result to %v: %v", current.ImplementedSpecVersion, err)
 	}
 
 	return result, nil
+}
+
+// We can't simply call current.GetResultFromResult(), since it doesn't convert properly, because it copies the gateway
+// from ip4.gateway to every route
+// convertTo030 properly converts a 020 result to a 030 result, without breaking nil gw fields
+func convertTo030(result types.Result) (types.Result, error) {
+	oldResult, err := types020.GetResult(result)
+	if err != nil {
+		return nil, err
+	}
+
+	newResult := &current.Result{
+		CNIVersion: current.ImplementedSpecVersion,
+		DNS:        oldResult.DNS,
+		Routes:     []*types.Route{},
+	}
+
+	if oldResult.IP4 != nil {
+		newResult.IPs = append(newResult.IPs, &current.IPConfig{
+			Version: "4",
+			Address: oldResult.IP4.IP,
+			Gateway: oldResult.IP4.Gateway,
+		})
+		for _, route := range oldResult.IP4.Routes {
+			newResult.Routes = append(newResult.Routes, &types.Route{
+				Dst: route.Dst,
+				GW:  route.GW,
+			})
+		}
+	}
+
+	if oldResult.IP6 != nil {
+		newResult.IPs = append(newResult.IPs, &current.IPConfig{
+			Version: "6",
+			Address: oldResult.IP6.IP,
+			Gateway: oldResult.IP6.Gateway,
+		})
+		for _, route := range oldResult.IP6.Routes {
+			newResult.Routes = append(newResult.Routes, &types.Route{
+				Dst: route.Dst,
+				GW:  route.GW,
+			})
+		}
+	}
+
+	if len(newResult.IPs) == 0 {
+		return nil, fmt.Errorf("cannot convert: no valid IP addresses")
+	}
+
+	return newResult, nil
 }
 
 func (p *cniPlugin) testCmdAdd(args *skel.CmdArgs) (types.Result, error) {
