@@ -194,6 +194,9 @@ func (p *cniPlugin) testCmdAdd(args *skel.CmdArgs) (types.Result, error) {
 
 func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 	req := newCNIRequest(args)
+
+	logDebug("input: " + string(req.Config))
+
 	config, err := cniserver.ReadConfig(cniserver.CNIServerConfigFilePath)
 	if err != nil {
 		return err
@@ -226,6 +229,8 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 	defaultGW := result020.IP4.Gateway
 	result020.IP4.Gateway = nil
 
+	logDebug("result020: " + string(convertResultToJson(result020)))
+
 	result030, err := current.NewResultFromResult(result020)
 	if err != nil || len(result030.IPs) != 1 || result030.IPs[0].Version != "4" {
 		return fmt.Errorf("failed to convert IPAM result: %v", err)
@@ -241,6 +246,8 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 		},
 	}
 	result030.IPs[0].Interface = current.Int(0)
+
+	logDebug("result030: " + string(convertResultToJson(result030)))
 
 	err = ns.WithNetNSPath(args.Netns, func(hostNS ns.NetNS) error {
 		// Set up eth0
@@ -322,12 +329,17 @@ func (p *cniPlugin) CmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
-	data, err := json.MarshalIndent(result, "", "    ")
-	if err == nil {
-		logDebug("output: " + string(data))
-	}
+	logDebug("output: " + string(convertResultToJson(result)))
 
 	return result.Print()
+}
+
+func convertResultToJson(result types.Result) []byte {
+	data, err := json.MarshalIndent(result, "", "    ")
+	if err != nil {
+		return []byte("error marshalling result to json")
+	}
+	return data
 }
 
 func convertToRequestedVersion(stdinData []byte, result types.Result) (types.Result, error) {
